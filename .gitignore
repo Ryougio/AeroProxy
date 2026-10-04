@@ -1,0 +1,16 @@
+# Build outputs
+*.pdb
+*.obj
+*.log
+
+# Windows thumbnail & desktop caches
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# User specific config
+config.json
+*.user
+
+# Crash dumps
+*.dmp
