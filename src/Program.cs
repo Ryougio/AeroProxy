@@ -162,20 +162,29 @@ namespace AeroProxy
             psi.WorkingDirectory = System.IO.Path.GetDirectoryName(item.Path);
             psi.UseShellExecute = false;
 
+            // Set HTTP & HTTPS proxies for Node.js / CLI tools
             psi.EnvironmentVariables["HTTP_PROXY"] = proxyUrl;
             psi.EnvironmentVariables["HTTPS_PROXY"] = proxyUrl;
-            psi.EnvironmentVariables["ALL_PROXY"] = proxyUrl;
             psi.EnvironmentVariables["http_proxy"] = proxyUrl;
             psi.EnvironmentVariables["https_proxy"] = proxyUrl;
-            psi.EnvironmentVariables["all_proxy"] = proxyUrl;
-            psi.EnvironmentVariables["NO_PROXY"] = cfg.BypassList.Replace(';', ',');
-            psi.EnvironmentVariables["no_proxy"] = cfg.BypassList.Replace(';', ',');
+
+            // Strict localhost bypass for Go/Node/Python to protect internal gRPC and UI servers
+            string noProxy = "127.0.0.1,localhost,::1";
+            psi.EnvironmentVariables["NO_PROXY"] = noProxy;
+            psi.EnvironmentVariables["no_proxy"] = noProxy;
             psi.EnvironmentVariables["NODE_TLS_REJECT_UNAUTHORIZED"] = "1";
+
+            // DO NOT set ALL_PROXY! ALL_PROXY routes internal gRPC loopback sockets through the proxy!
 
             var sb = new StringBuilder();
             if (item.Mode == "smart" || IsElectronOrChromium(item.Path))
             {
-                sb.AppendFormat("--proxy-server=\"{0}\" --proxy-bypass-list=\"{1}\"", proxyUrl, cfg.BypassList);
+                // In Chromium/Electron:
+                // 1. Never put quotes around the proxy-server value (causes URI scheme parse errors)
+                // 2. bypass-list MUST contain <-loopback>;127.0.0.1;localhost;<local>
+                //    so that internal electron webviews (e.g. Antigravity at https://127.0.0.1:port)
+                //    will never be hijacked by proxy!
+                sb.AppendFormat("--proxy-server={0} --proxy-bypass-list=\"<-loopback>;127.0.0.1;localhost;::1;<local>\"", proxyUrl);
             }
             psi.Arguments = sb.ToString();
 
@@ -1187,9 +1196,51 @@ namespace AeroProxy
                 app.Enabled = !app.Enabled;
                 ConfigStore.Save(_config);
                 RefreshAppList();
-                FlashStatus(app.Enabled ? string.Format("已开启 [{0}] 代理接管", app.Name) : string.Format("已关闭 [{0}] 代理接管", app.Name));
+                if (app.Enabled)
+                {
+                    bool running = IsProcessRunning(app.Path);
+                    FlashStatus(running
+                        ? string.Format("已开启 [{0}] 代理。当前正在运行，建议重启以生效", app.Name)
+                        : string.Format("已开启 [{0}] 代理。可点击「启动」运行", app.Name));
+                }
+                else
+                {
+                    FlashStatus(string.Format("已关闭 [{0}] 代理接管", app.Name));
+                }
             };
             btnStack.Children.Add(btnProxyOnly);
+
+            if (app.Enabled)
+            {
+                var btnRun = new Button
+                {
+                    Content = "启动",
+                    FontSize = 11,
+                    FontWeight = FontWeights.Medium,
+                    Padding = new Thickness(12, 5, 12, 5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    Cursor = Cursors.Hand,
+                    BorderThickness = new Thickness(1),
+                    Background = new SolidColorBrush(Color.FromArgb(35, 0, 113, 227)),
+                    Foreground = BrushAppleBlue,
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(80, 0, 113, 227))
+                };
+                btnRun.Template = pTemplate;
+                btnRun.Click += delegate
+                {
+                    try
+                    {
+                        ProxyEngine.LaunchWithProxy(app, _config);
+                        FlashStatus(string.Format("已以代理模式启动 [{0}]", app.Name));
+                        RefreshAppList();
+                    }
+                    catch (Exception ex)
+                    {
+                        FlashStatus("启动失败: " + ex.Message);
+                    }
+                };
+                btnStack.Children.Add(btnRun);
+            }
 
             var btnDel = new TextBlock
             {
