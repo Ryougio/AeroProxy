@@ -34,7 +34,7 @@ AeroProxy 采用**沙盒隔离环境变量 + Chromium 网络核心参数接管**
 - 🎨 **极简 Apple 风格设计**：
   - 深空黑曜石基底搭配柔和圆角（Windows 11 DWM 系统级抗锯齿圆角）。
   - 顶部导航栏内嵌一体化 **Apple 胶囊式分段切换条（分流清单 / 设置）**，大面积触控，视觉浑然一体。
-  - 右上角标准极简 `—`（最小化）与 `✕`（关闭）按钮，操作顺畅自然。
+  - **极简托盘驻留后台（类 Clash Verge 体验）**：点击右上角 `✕` 或按 `ESC` 自动静默最小化至系统托盘，任务栏不占位且持续在后台守护分流；左键单击托盘图标快速还原，右键托盘菜单选择「退出 AeroProxy」方可完全退出。
   - 彻底去除模糊投影阴影，像素级清晰渲染（ClearType Display 模式）。
   - 窗口支持边缘及四角鼠标拖拽自由拉伸放大缩小。
 - ⚡ **独立「设置」分页**：
@@ -75,12 +75,12 @@ AeroProxy/
 
 ## 🔨 本地构建（一行命令）
 
-本仓库使用 Windows 自带的 .NET Framework C# 编译器（`csc.exe`），无需安装 Visual Studio、无需 Node.js、无需任何额外 SDK！
+本项目使用 Windows 自带的 .NET Framework C# 编译器（`csc.exe`），无需安装 Visual Studio、无需 Node.js、无需任何额外 SDK！
 
 克隆本仓库后，直接双击运行 **`build.bat`** 即可在 1 秒内完成编译并生成 `AeroProxy.exe`：
 
 ```cmd
-git clone https://github.com/your-username/AeroProxy.git
+git clone https://github.com/Ryougio/AeroProxy.git
 cd AeroProxy
 build.bat
 ```

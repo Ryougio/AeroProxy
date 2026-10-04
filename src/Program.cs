@@ -193,6 +193,7 @@ namespace AeroProxy
         private StackPanel _appListPanel;
         private TextBlock _statusPillText;
         private TextBlock _listCountText;
+        private System.Windows.Forms.NotifyIcon _notifyIcon;
 
         // Pages
         private Grid _pageApps;
@@ -295,13 +296,93 @@ namespace AeroProxy
                 }
             };
 
+            // Press ESC to hide to tray
             KeyDown += delegate(object s, KeyEventArgs e)
             {
-                if (e.Key == Key.Escape) Close();
+                if (e.Key == Key.Escape) Hide();
             };
 
             BuildUI();
             RefreshAppList();
+            InitSystemTray();
+        }
+
+        private void InitSystemTray()
+        {
+            _notifyIcon = new System.Windows.Forms.NotifyIcon();
+            _notifyIcon.Text = "AeroProxy - 免 TUN 代理分流中枢";
+
+            string iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "icon.ico");
+            if (!File.Exists(iconPath))
+            {
+                iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets", "icon.ico");
+            }
+
+            if (File.Exists(iconPath))
+            {
+                try
+                {
+                    _notifyIcon.Icon = new System.Drawing.Icon(iconPath);
+                }
+                catch
+                {
+                    _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+                }
+            }
+            else
+            {
+                _notifyIcon.Icon = System.Drawing.SystemIcons.Application;
+            }
+
+            _notifyIcon.Visible = true;
+
+            // Click tray to restore window
+            _notifyIcon.MouseClick += delegate(object s, System.Windows.Forms.MouseEventArgs e)
+            {
+                if (e.Button == System.Windows.Forms.MouseButtons.Left)
+                {
+                    RestoreFromTray();
+                }
+            };
+
+            // Tray Context Menu
+            var menu = new System.Windows.Forms.ContextMenu();
+
+            var itemOpen = new System.Windows.Forms.MenuItem("显示主界面");
+            itemOpen.Click += delegate { RestoreFromTray(); };
+            menu.MenuItems.Add(itemOpen);
+
+            menu.MenuItems.Add(new System.Windows.Forms.MenuItem("-"));
+
+            var itemExit = new System.Windows.Forms.MenuItem("退出 AeroProxy");
+            itemExit.Click += delegate { FullExit(); };
+            menu.MenuItems.Add(itemExit);
+
+            _notifyIcon.ContextMenu = menu;
+        }
+
+        private void RestoreFromTray()
+        {
+            Show();
+            WindowState = WindowState.Normal;
+            Activate();
+        }
+
+        private void FullExit()
+        {
+            if (_notifyIcon != null)
+            {
+                _notifyIcon.Visible = false;
+                _notifyIcon.Dispose();
+                _notifyIcon = null;
+            }
+            Application.Current.Shutdown();
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            FullExit();
+            base.OnClosed(e);
         }
 
         private void BuildUI()
@@ -399,7 +480,7 @@ namespace AeroProxy
             Grid.SetColumn(segmentTrack, 1);
             titleBarGrid.Children.Add(segmentTrack);
 
-            // Controls (- and X)
+            // Controls (- and X: Minimize to Tray)
             var controlsStack = new StackPanel { Orientation = Orientation.Horizontal };
 
             var btnMin = new Button
@@ -418,6 +499,7 @@ namespace AeroProxy
             btnMin.Click += delegate { WindowState = WindowState.Minimized; };
             controlsStack.Children.Add(btnMin);
 
+            // Close button: Hides to System Tray like Clash Verge!
             var btnClose = new Button
             {
                 Content = "✕",
@@ -431,7 +513,10 @@ namespace AeroProxy
             };
             ApplySimpleButtonTemplate(btnClose, BrushCloseHover, Colors.White);
             WindowChrome.SetIsHitTestVisibleInChrome(btnClose, true);
-            btnClose.Click += delegate { Close(); };
+            btnClose.Click += delegate
+            {
+                Hide(); // Minimize to system tray in background!
+            };
             controlsStack.Children.Add(btnClose);
 
             Grid.SetColumn(controlsStack, 2);
@@ -773,7 +858,7 @@ namespace AeroProxy
 
             _rbAutoStartAppOnly = new RadioButton
             {
-                Content = "仅自启动应用", // Renamed as requested
+                Content = "仅自启动应用",
                 GroupName = "AutoStartMode",
                 IsChecked = !_config.AutoStartProxy,
                 Foreground = BrushTextSecondary,
@@ -1064,12 +1149,12 @@ namespace AeroProxy
             Grid.SetColumn(metaStack, 0);
             grid.Children.Add(metaStack);
 
-            // Action: Concise "代理" Button (Renamed from "只代理 (已启用)")
+            // Action: Concise "代理" Button
             var btnStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
 
             var btnProxyOnly = new Button
             {
-                Content = app.Enabled ? "代理" : "未代理", // Concise as requested
+                Content = app.Enabled ? "代理" : "未代理",
                 FontSize = 11,
                 FontWeight = FontWeights.Medium,
                 Padding = new Thickness(14, 5, 14, 5),

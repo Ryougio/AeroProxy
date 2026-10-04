@@ -21,6 +21,8 @@ echo [2/2] Compiling AeroProxy.exe (Single-file native executable)...
   /reference:"%FRAMEWORK%\System.Xaml.dll" ^
   /reference:"System.dll" ^
   /reference:"System.Core.dll" ^
+  /reference:"System.Drawing.dll" ^
+  /reference:"%FRAMEWORK%\System.Windows.Forms.dll" ^
   /reference:"%FRAMEWORK%\System.Web.Extensions.dll" ^
   /reference:"%FRAMEWORK%\Microsoft.CSharp.dll" ^
   /out:"AeroProxy.exe" "src\Program.cs"
@@ -28,7 +30,7 @@ echo [2/2] Compiling AeroProxy.exe (Single-file native executable)...
 if %ERRORLEVEL% equ 0 (
     echo.
     echo ========================================================
-    echo   BUILD SUCCESSFUL: AeroProxy.exe generated!
+    echo   BUILD SUCCESSFUL: AeroProxy.exe generated
     echo ========================================================
 ) else (
     echo.
