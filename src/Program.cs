@@ -134,6 +134,91 @@ namespace AeroProxy
         }
     }
 
+    public static class ShortcutHelper
+    {
+        public static void SyncAppShortcuts(ProxyItem item, ProxyConfig cfg)
+        {
+            try
+            {
+                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+                if (shellType == null) return;
+                dynamic shell = Activator.CreateInstance(shellType);
+
+                string args = item.Enabled
+                    ? string.Format("--proxy-server={0}://{1}:{2} --proxy-bypass-list=\"<-loopback>;127.0.0.1;localhost;::1;<local>\"", cfg.Protocol, cfg.Host, cfg.Port)
+                    : "";
+
+                var searchDirs = new List<string>();
+
+                // 1. Standard Desktop folders
+                searchDirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+                searchDirs.Add(Environment.GetFolderPath(Environment.SpecialFolder.CommonDesktopDirectory));
+
+                // 2. Redirected Desktop folder from User Shell Folders
+                try
+                {
+                    using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"))
+                    {
+                        if (key != null)
+                        {
+                            object dVal = key.GetValue("Desktop");
+                            if (dVal != null) searchDirs.Add(Environment.ExpandEnvironmentVariables(dVal.ToString()));
+                        }
+                    }
+                }
+                catch { }
+
+                // 3. Start Menu Programs
+                searchDirs.Add(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), @"Microsoft\Windows\Start Menu\Programs"));
+                searchDirs.Add(System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), @"Microsoft\Windows\Start Menu\Programs"));
+
+                foreach (var dir in searchDirs)
+                {
+                    if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) continue;
+                    try
+                    {
+                        var lnks = Directory.GetFiles(dir, "*.lnk", SearchOption.AllDirectories);
+                        foreach (var lnk in lnks)
+                        {
+                            try
+                            {
+                                dynamic shortcut = shell.CreateShortcut(lnk);
+                                string target = shortcut.TargetPath;
+                                if (!string.IsNullOrEmpty(target) && string.Equals(target, item.Path, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    shortcut.Arguments = args;
+                                    shortcut.Save();
+                                }
+                            }
+                            catch { }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        public static void EnsureSystemProxyOverrideSafe()
+        {
+            try
+            {
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Internet Settings", true))
+                {
+                    if (key == null) return;
+                    object val = key.GetValue("ProxyOverride");
+                    string cur = val != null ? val.ToString() : "";
+                    if (!cur.Contains("127.0.0.1"))
+                    {
+                        string updated = "<-loopback>;127.0.0.1;localhost;::1;" + cur;
+                        key.SetValue("ProxyOverride", updated);
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
     public static class ProxyEngine
     {
         public static bool IsElectronOrChromium(string exePath)
@@ -310,6 +395,12 @@ namespace AeroProxy
             {
                 if (e.Key == Key.Escape) Hide();
             };
+
+            ShortcutHelper.EnsureSystemProxyOverrideSafe();
+            foreach (var a in _config.Apps)
+            {
+                if (a.Enabled) ShortcutHelper.SyncAppShortcuts(a, _config);
+            }
 
             BuildUI();
             RefreshAppList();
@@ -928,7 +1019,12 @@ namespace AeroProxy
             _config.Port = port;
             ConfigStore.Save(_config);
 
-            FlashStatus("上游代理配置已保存并生效");
+            foreach (var a in _config.Apps)
+            {
+                if (a.Enabled) ShortcutHelper.SyncAppShortcuts(a, _config);
+            }
+
+            FlashStatus("上游代理配置已保存并同步快捷方式");
         }
 
         private Button CreatePresetButton(string text, int port, string proto = "http")
@@ -1194,18 +1290,19 @@ namespace AeroProxy
             btnProxyOnly.Click += delegate
             {
                 app.Enabled = !app.Enabled;
+                ShortcutHelper.SyncAppShortcuts(app, _config);
                 ConfigStore.Save(_config);
                 RefreshAppList();
                 if (app.Enabled)
                 {
                     bool running = IsProcessRunning(app.Path);
                     FlashStatus(running
-                        ? string.Format("已开启 [{0}] 代理。当前正在运行，建议重启以生效", app.Name)
-                        : string.Format("已开启 [{0}] 代理。可点击「启动」运行", app.Name));
+                        ? string.Format("已开启 [{0}] 代理并同步快捷方式。当前正在运行，建议重启生效", app.Name)
+                        : string.Format("已开启 [{0}] 代理并同步桌面图标。可点击「启动」运行", app.Name));
                 }
                 else
                 {
-                    FlashStatus(string.Format("已关闭 [{0}] 代理接管", app.Name));
+                    FlashStatus(string.Format("已关闭 [{0}] 代理（桌面快捷方式已还原）", app.Name));
                 }
             };
             btnStack.Children.Add(btnProxyOnly);
@@ -1256,6 +1353,8 @@ namespace AeroProxy
             btnDel.MouseLeave += delegate { btnDel.Foreground = BrushTextTertiary; };
             btnDel.MouseLeftButtonDown += delegate
             {
+                app.Enabled = false;
+                ShortcutHelper.SyncAppShortcuts(app, _config);
                 _config.Apps.Remove(app);
                 ConfigStore.Save(_config);
                 RefreshAppList();
@@ -1290,18 +1389,20 @@ namespace AeroProxy
                 }
             }
 
-            _config.Apps.Add(new ProxyItem
+            var newItem = new ProxyItem
             {
                 Id = Guid.NewGuid().ToString(),
                 Name = name,
                 Path = path,
                 Enabled = true,
                 Mode = "smart"
-            });
+            };
+            _config.Apps.Add(newItem);
+            ShortcutHelper.SyncAppShortcuts(newItem, _config);
 
             ConfigStore.Save(_config);
             RefreshAppList();
-            FlashStatus("已成功添加程序: " + name);
+            FlashStatus("已成功添加程序并同步快捷方式: " + name);
         }
 
         private void AddCustomAppDialog()
